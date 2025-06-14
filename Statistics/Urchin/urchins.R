@@ -138,7 +138,9 @@ for (i in 1:30) { ## EM loop
      cat(th,"\n")
 }
 
-# tests
+
+# test within Q
+urchin_sm <- urchins[c(1,25,50,75,100,115,125,142), ]
 th <- c(
     -3.0,
     -0.3, 
@@ -147,41 +149,90 @@ th <- c(
     -1.5,
     -1.37
 )
-n <- nrow(urchins)
+thp <- rep(0, 6)
+n <- nrow(urchin_sm)
 b <- c(rep(th[2],n),rep(th[4],n))
-tmp <- lfyb(b,urchins$vol,urchins$age,th)
-tmp$lf
+
+la <- laplace(s=0,th,thp,vol=urchin_sm$vol,age=urchin_sm$age,b=b)
+la
+
+lfyb(la$b,urchin_sm$vol,urchin_sm$age,th)$lf
 
 
-# test how expr is working
-mean_expr_0 <- expression(
-     exp(w)*exp(exp(g)*a)
-)
-mean_expr_0_d <- deriv(mean_expr_0, c("g"), hessian=TRUE,function.arg=c("w","g","a"))
+eps = 1e-5
+lap <- laplace(s=eps/2,th,thp,vol=urchin_sm$vol,age=urchin_sm$age,b=b)$rldetH
+lam <- laplace(s= -eps/2,th,thp,vol=urchin_sm$vol,age=urchin_sm$age,b=b)$rldetH
 
 
-mean_expr_1 <- expression(
-     exp(p)/exp(g) + exp(p)*( a - log(exp(p) / (exp(g)*exp(w)))/exp(g) )
-)
-mean_expr_1_d <- deriv(mean_expr_1, c("g","p"), hessian=TRUE,function.arg=c("w","g","p","a"))
-
-
-am <- (th[4]-th[2]-th[1])/exp(th[2])
-a <- 5.0
-
-mean_expr_1_d(th[1],th[2],th[4],a)
-
-a <- 4.0
-a < am
-mean_expr_0_d(th[1], th[2], a)
-
-model_urchin_vol <- function(w, g, p, a) {
-     am <- (p-g-w)/exp(g)
-     if (a < am) {
-          return(mean_expr_0_d(w,g,a))
-     } else {
-          return(mean_expr_1_d(w,g,p,a))
+laplace_test <- function(s=0,th,thp,vol,age,b=NULL,tol=.Machine$double.eps^.7) {
+     ii <- c(3,5,6) # variance parameters
+     thp[ii] <- exp(thp[ii])
+     th[ii] <- exp(th[ii])
+     n <- length(vol)
+     # initialize b
+     if (is.null(b)) {
+          b <- c(rep(thp[2],n),rep(thp[4],n))
+     } 
+     lf <- lfybs(s,b,vol,age,th,thp)
+     # newton loop to find \hat{b}
+     for (i in 1:200) {
+          # R'R = fixed Hessian, R upper tri
+          R <- pdR(-lf$H)
+          step <- backsolve(R,forwardsolve(t(R),lf$g)) ## Newton 
+          conv <- ok <- FALSE
+          while (!ok) {
+               lf1 <- lfybs(s,b+step,vol,age,th,thp)
+               if (sum(abs(lf1$g)>abs(lf1$lf)*tol)==0 || sum(b+step!=b)==0) {
+                    conv <- TRUE
+               }
+               kk <- 0
+               if (!conv&&kk<30&&(!is.finite(lf1$lf) || lf1$lf < lf$lf)) {
+                    step <- step/2;kk <- kk+1
+               } else {
+                    ok <- TRUE
+               }
+          }
+          dlf <- abs(lf$lf-lf1$lf);lf <- lf1;b <- b + step;
+          if (dlf<tol*abs(lf$lf)||conv||kk==30) {
+               break
+          }
      }
+     if (s==0) {
+          return(list(g=lfyb(b,vol,age,th)$lf,b=b))
+     }
+     R <- pdR(-lf$H,10)
+     list(b=b,rldetH = sum(log(diag(R))), H=lf$H, R=R)
 }
 
-model_urchin_vol(th[1], th[2], th[4], 1.0)
+lap <- laplace_test(s=eps/2,th,thp,vol=urchin_sm$vol,age=urchin_sm$age,b=b)
+
+norm(lap$H)
+
+pdR <- function(H,k.mult=20,tol=.Machine$double.eps^.8) {
+     k <- 1
+     tol <- tol * norm(H)
+     n <- ncol(H)
+     while (
+          inherits(try(R <- chol(H + (k-1)*tol*diag(n)), silent=TRUE),"try-error")
+     ) {
+          k <- k * k.mult
+     }
+     R 
+}
+
+lap_H <- as.matrix(read.csv('./Statistics/Urchin/H.csv', row.names=NULL, header=FALSE))
+
+pdR(lap_H)
+
+colnames(lap_H) <- NULL
+
+tol=.Machine$double.eps^.8
+k <- 1
+n <- ncol(lap_H)
+
+chol(lap_H + (k-1)*tol*diag(n))
+
+inherits(try(R <- chol(H + (k-1)*tol*diag(n)), silent=TRUE),"try-error")
+
+m <- matrix(c(5,1,1,3),2,2)
+chol(m)
