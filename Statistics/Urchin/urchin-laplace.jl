@@ -80,7 +80,6 @@ end
 
 const ad_sys = AutoForwardDiff()
 const prep_g_nlyfb = prepare_gradient(nlyfb_urchin, ad_sys, zero(b_init), Constant(th_init), Constant(urchin))
-g_nlyfb!(G, b) = gradient!(nlyfb_urchin, G, prep_g_nlyfb, ad_sys, b, Constant(th_init), Constant(urchin))
 
 const sp_ad_sys = AutoSparse(
     ad_sys;
@@ -137,11 +136,15 @@ function marginal_nll(θ)
      # the `llu` function from Wood's R code
      nb = length(b_cache)
 
+     g_nlyfb!(G, b) = gradient!(nlyfb_urchin, G, prep_g_nlyfb, ad_sys, b, Constant(θ), Constant(urchin))
+     H_nlyfb!(H, b) = hessian!(nlyfb_urchin, H, prep_sp_h_nlyfb, sp_ad_sys, b, Constant(θ), Constant(urchin))
+
      nlfyb_optim = optimize(
           b -> nlyfb_urchin(b, θ, urchin), 
           g_nlyfb!,
+          H_nlyfb!,
           b_cache, 
-          LBFGS(;alphaguess=InitialStatic(scaled=true), linesearch=BackTracking())
+          Newton(;alphaguess=InitialStatic(scaled=true), linesearch=BackTracking())
      )
      b_hat = Optim.minimizer(nlfyb_optim)
      nlfyb_hat = Optim.minimum(nlfyb_optim)
