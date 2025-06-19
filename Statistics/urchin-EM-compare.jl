@@ -101,9 +101,17 @@ prep_h_nlfyb = prepare_hessian(nlfyb_urchin, sp_ad_sys, zero(b_init), Constant(t
 """
 Return s \\log{f_{\theta}(y,b)} + \\log{f_{\theta^{'}}(y,b)}
 """
-function lyfbs_urchin(b, s, θ, θ′, urchin)
+function lfybs_urchin(b, s, θ, θ′, urchin)
     return s * lfyb_urchin(b, θ, urchin) + lfyb_urchin(b, θ′, urchin)
 end
+
+function nlfybs_urchin(b, s, θ, θ′, urchin)
+    return -lfybs_urchin(b, s, θ, θ′, urchin)
+end
+
+# need to optimize with Newton's method, so need grad/Hess wrt b
+prep_g_nlfybs = prepare_gradient(nlfybs_urchin, ad_sys, zero(b_init), Constant(0.0), Constant(th_init), Constant(th_init), Constant(urchin))
+prep_h_nlfybs = prepare_hessian(nlfybs_urchin, sp_ad_sys, zero(b_init), Constant(0.0), Constant(th_init), Constant(th_init), Constant(urchin))
 
 @rput urchin
 
@@ -284,12 +292,6 @@ end
 
 g_nlfyb!(G, b) = gradient!(nlfyb_urchin, G, prep_g_nlfyb, ad_sys, b, Constant(th_p), Constant(urchin))
 H_nlfyb!(H, b) = hessian!(nlfyb_urchin, H, prep_h_nlfyb, sp_ad_sys, b, Constant(th_p), Constant(urchin))
-# la_optim = optimize(
-#     b -> nlfyb_urchin(b, th_p, urchin), 
-#     g_nlfyb!,
-#     b_init, 
-#     LBFGS(;alphaguess=InitialStatic(scaled=true), linesearch=BackTracking())
-# )
 
 la_optim = optimize(
     b -> nlfyb_urchin(b, th_p, urchin), 
@@ -300,15 +302,34 @@ la_optim = optimize(
 )
 
 b_hat = Optim.minimizer(la_optim)
-# Optim.minimum(la_optim)
-lfyb_urchin(b_hat, th, urchin)
-
-lfyb_urchin(b_init, th_p, urchin)
-
-R"lfybs(s=0,$(b_init),urchin$vol,urchin$age,$(th_r),$(th_p_r))$lf"
-R"lfyb($(b_init),urchin$vol,urchin$age,$(th_p_r))$lf"
 
 R"la_r <- laplace(s=0,$(th),$(th_p),urchin$vol,urchin$age,b=$(b_init))"
 @rget la_r
 
+DataFrame(R=la_r[:b], Julia=b_hat)
+
+la_r[:g]
 lfyb_urchin(la_r[:b], th, urchin)
+
+# second part of Q 
+# needs to compute the derivative of the logdet hessian at s=0
+
+# compare this to what's going on internally
+function laplace_jl(s, b0, θ, θ′, urchin)
+
+    g_nlfybs!(G, b) = gradient!(nlfybs_urchin, G, prep_g_nlfybs, ad_sys, b, Constant(s), Constant(θ), Constant(θ′), Constant(urchin))
+    H_nlfybs!(H, b) = hessian!(nlfybs_urchin, H, prep_h_nlfybs, sp_ad_sys, b, Constant(s), Constant(θ), Constant(θ′), Constant(urchin))
+
+    la_optim = optimize(
+        b -> nlfybs_urchin(b, s, θ, θ′, urchin), 
+        g_nlfybs!,
+        H_nlfybs!,
+        b0, 
+        Newton(;alphaguess=InitialStatic(scaled=true), linesearch=BackTracking())
+    )
+
+    b_hat = Optim.minimizer(la_optim)
+    H = hessian(nlyfb_urchin, prep_h_nlfybs, sp_ad_sys, b_hat, Constant(s), Constant(θ), Constant(θ′), Constant(urchin))
+    R = pdR(H, 10)
+    return logdet(R)
+end
