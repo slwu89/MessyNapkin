@@ -48,8 +48,11 @@ lfyb <- function(b,y,a,th) {
      f1 <- v1(a[!ind],y[!ind],g[!ind],p[!ind],
           th[1],th[2],th[3],th[4],th[5],th[6])
      lf <- sum(f0) + sum(f1)
-     g <- matrix(0,n,2) ## extract gradient to g... g[ind,] <- attr(f0,"gradient") ## dlfyb/db g[!ind,] <- attr(f1,"gradient") ## dlfyb/db
-     h <- array(0,c(n,2,2)) ## extract Hessian to H... h[ind,,] <- attr(f0,"hessian")
+     g <- matrix(0,n,2) ## extract gradient to g... 
+     g[ind,] <- attr(f0,"gradient") ## dlfyb/db 
+     g[!ind,] <- attr(f1,"gradient") ## dlfyb/db
+     h <- array(0,c(n,2,2)) ## extract Hessian to H... 
+     h[ind,,] <- attr(f0,"hessian")
      h[!ind,,] <- attr(f1,"hessian") 
      H <- matrix(0,2*n,2*n)
      for (i in 1:2) for (j in 1:2) {

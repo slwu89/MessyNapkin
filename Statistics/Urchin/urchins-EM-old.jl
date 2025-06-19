@@ -69,14 +69,14 @@ function lfyb_urchin(b, θ, urchin)
     log_g = b[log_g_ix]
     log_p = b[log_p_ix]
     # calculate the loglikelihood of y and b
-    logll = 0.0
+    ll = 0.0
     for i in axes(urchin,1)
         v = model_urchin_vol(ω, exp(log_g[i]), exp(log_p[i]), urchin[i, :age])
-        logll += logpdf(Normal(sqrt(v), σ), sqrt(urchin[i, :vol]))
-        logll += logpdf(Normal(θ[μ_g_ix], σ_g), log_g[i])
-        logll += logpdf(Normal(θ[μ_p_ix], σ_p), log_p[i])
+        ll += logpdf(Normal(sqrt(v), σ), sqrt(urchin[i, :vol]))
+        ll += logpdf(Normal(θ[μ_g_ix], σ_g), log_g[i])
+        ll += logpdf(Normal(θ[μ_p_ix], σ_p), log_p[i])
     end
-    return logll
+    return ll
 end
 
 function nlfyb_urchin(b, θ, urchin)
