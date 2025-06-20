@@ -24,7 +24,8 @@ urchin = CSV.read("./Urchin/urchin.csv", DataFrame)
 select!(urchin, Not(:id))
 urchin.age = convert(Vector{Float64}, urchin.age)
 
-urchin = urchin[[1,3,5,50,100,142], :]
+# urchin = urchin[[1,3,5,50,100,142], :]
+urchin = urchin[1:5:nrow(urchin), :]
 
 # index into a single vector for b (random effects)
 log_g_ix = 1:nrow(urchin)
@@ -369,7 +370,8 @@ function Q(θ, θ′, urchin)
      b_cache .= b_hat
      g = lfyb_urchin(b_hat, θ, urchin)
 
-     # For s = -eps and eps find b maximising s log joint ## at th + log joint at thp along with log|H_s|.
+     # For s = -eps and eps find b maximising s log joint 
+     ## at th + log joint at thp along with log|H_s|.
      ds_H = derivative(laplace_jl, laplace_jl_prep, fd_sys, 0.0, Constant(b_hat), Constant(θ), Constant(θ′), Constant(urchin))
 
      return -(g - ds_H)
@@ -394,7 +396,7 @@ Q <- function(th,thp,vol,age,eps=1e-5) {
 
 th = th_init
 th_p = th_init + rand(length(th_init))
-const b_cache = deepcopy(b_init)
+b_cache = deepcopy(b_init)
 
 Q(th, th_p, urchin)
 R"Q($(th), $(th_p), urchin$vol, urchin$age)"
@@ -404,16 +406,18 @@ R"Q($(th), $(th_p), urchin$vol, urchin$age)"
 
 θ = zero(th_init)
 θ′ = zero(th_init)
+er_min = 0.0
 
-for i in 1:30
+for i in 1:50
      er = optimize(
          θ -> Q(θ, θ′, urchin),
          θ,
          NelderMead(;
              parameters = Optim.FixedParameters()
          ),
-         Optim.Options(show_trace=true, iterations=200)
+         Optim.Options(show_trace=false, iterations=200)
      )
+     er_min = Optim.minimum(er)
      θ = deepcopy(Optim.minimizer(er))
      θ′ = deepcopy(Optim.minimizer(er))
      println("iteration: $i, θ: $θ")
@@ -421,7 +425,7 @@ end
 
 R"""
 thp <- th <- rep(0,6); ## starting values
-for (i in 1:30) { ## EM loop
+for (i in 1:50) { ## EM loop
      er <- optim(th,Q,control=list(fnscale=-1,maxit=200),vol=urchin$vol,age=urchin$age,thp=thp)
      th <- thp <- er$par
      cat(th,"\n")
@@ -430,3 +434,8 @@ for (i in 1:30) { ## EM loop
 @rget th
 
 DataFrame(R=th, Julia=θ)
+
+er_min
+R"er$value"
+R"Q(th, th, urchin$vol, urchin$age)"
+R"Q($(θ), $(θ), urchin$vol, urchin$age)"
