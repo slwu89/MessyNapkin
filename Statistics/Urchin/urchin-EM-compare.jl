@@ -16,6 +16,7 @@ using SparseArrays
 
 const ad_sys = AutoForwardDiff()
 
+# to check our results against R
 using RCall
 
 # load the urchin data
@@ -191,21 +192,21 @@ lfybs <- function(s,b,vol,age,th,thp) {
 }
 """
 
-th = th_init
-th_p = th_init + rand(length(th_init))
+# th = th_init
+# th_p = th_init + rand(length(th_init))
 
-th_r = deepcopy(th_init)
-th_r[[3,5,6]] .= exp.(th_r[[3,5,6]])
+# th_r = deepcopy(th_init)
+# th_r[[3,5,6]] .= exp.(th_r[[3,5,6]])
 
-th_p_r = deepcopy(th_p)
-th_p_r[[3,5,6]] .= exp.(th_p_r[[3,5,6]])
+# th_p_r = deepcopy(th_p)
+# th_p_r[[3,5,6]] .= exp.(th_p_r[[3,5,6]])
 
-# check that so far we are ok
-lfyb_urchin(b_init, th, urchin)
-lyfbs_urchin(b_init, 0.3, th, th_p, urchin)
+# # check that so far we are ok
+# lfyb_urchin(b_init, th, urchin)
+# lfybs_urchin(b_init, 0.3, th, th_p, urchin)
 
-R"lfyb($(b_init), urchin$vol, urchin$age, $(th_r))$lf"
-R"lfybs(0.3, $(b_init), urchin$vol, urchin$age, $(th_r), $(th_p_r))$lf"
+# R"lfyb($(b_init), urchin$vol, urchin$age, $(th_r))$lf"
+# R"lfybs(0.3, $(b_init), urchin$vol, urchin$age, $(th_r), $(th_p_r))$lf"
 
 R"""
 laplace <- function(s=0,th,thp,vol,age,b=NULL,tol=.Machine$double.eps^.7) {
@@ -290,26 +291,27 @@ end
 # this basically needs to find b_hat for lfyb(thp)
 # and then return lfyb(b_hat,th)
 
-g_nlfyb!(G, b) = gradient!(nlfyb_urchin, G, prep_g_nlfyb, ad_sys, b, Constant(th_p), Constant(urchin))
-H_nlfyb!(H, b) = hessian!(nlfyb_urchin, H, prep_h_nlfyb, sp_ad_sys, b, Constant(th_p), Constant(urchin))
+# g_nlfyb!(G, b) = gradient!(nlfyb_urchin, G, prep_g_nlfyb, ad_sys, b, Constant(th_p), Constant(urchin))
+# H_nlfyb!(H, b) = hessian!(nlfyb_urchin, H, prep_h_nlfyb, sp_ad_sys, b, Constant(th_p), Constant(urchin))
 
-la_optim = optimize(
-    b -> nlfyb_urchin(b, th_p, urchin), 
-    g_nlfyb!,
-    H_nlfyb!,
-    b_init, 
-    Newton(;alphaguess=InitialStatic(scaled=true), linesearch=BackTracking())
-)
+# la_optim = optimize(
+#     b -> nlfyb_urchin(b, th_p, urchin), 
+#     g_nlfyb!,
+#     H_nlfyb!,
+#     b_init, 
+#     Newton(;alphaguess=InitialStatic(scaled=true), linesearch=BackTracking())
+# )
 
-b_hat = Optim.minimizer(la_optim)
+# b_hat = Optim.minimizer(la_optim)
 
-R"la_r <- laplace(s=0,$(th),$(th_p),urchin$vol,urchin$age,b=$(b_init))"
-@rget la_r
+# R"la_r <- laplace(s=0,$(th),$(th_p),urchin$vol,urchin$age,b=$(b_init))"
+# @rget la_r
 
-DataFrame(R=la_r[:b], Julia=b_hat)
+# DataFrame(R=la_r[:b], Julia=b_hat)
 
-la_r[:g]
-lfyb_urchin(la_r[:b], th, urchin)
+# la_r[:g]
+# lfyb_urchin(la_r[:b], th, urchin)
+# lfyb_urchin(b_hat, th, urchin)
 
 # second part of Q 
 # needs to compute the derivative of the logdet hessian at s=0
@@ -329,7 +331,102 @@ function laplace_jl(s, b0, θ, θ′, urchin)
     )
 
     b_hat = Optim.minimizer(la_optim)
-    H = hessian(nlyfb_urchin, prep_h_nlfybs, sp_ad_sys, b_hat, Constant(s), Constant(θ), Constant(θ′), Constant(urchin))
+    H = hessian(nlfybs_urchin, prep_h_nlfybs, sp_ad_sys, b_hat, Constant(s), Constant(θ), Constant(θ′), Constant(urchin))
     R = pdR(H, 10)
     return logdet(R)
 end
+
+# auto finite diff for the outer marginal nll
+fd_sys = AutoFiniteDiff()
+laplace_jl_prep = prepare_derivative(laplace_jl, fd_sys, 0.0, Constant(b_init), Constant(th_init), Constant(th_init), Constant(urchin))
+
+# derivative(laplace_jl, laplace_jl_prep, fd_sys, 0.0, Constant(b_hat), Constant(th), Constant(th_p), Constant(urchin))
+
+# R"""
+# eps=1e-5
+# lap <- laplace(s=eps/2,$(th),$(th_p),urchin$vol,urchin$age,b=la_r$b)$rldetH
+# lam <- laplace(s= -eps/2,$(th),$(th_p),urchin$vol,urchin$age,b=la_r$b)$rldetH
+# H_ds <- (lap-lam)/eps
+# """
+
+# @rget H_ds
+
+
+function Q(θ, θ′, urchin)
+     # find b.hat maximising log joint density at θ′
+     g_nlfyb!(G, b) = gradient!(nlfyb_urchin, G, prep_g_nlfyb, ad_sys, b, Constant(θ′), Constant(urchin))
+     H_nlfyb!(H, b) = hessian!(nlfyb_urchin, H, prep_h_nlfyb, sp_ad_sys, b, Constant(θ′), Constant(urchin))
+
+     la_optim = optimize(
+          b -> nlfyb_urchin(b, θ′, urchin), 
+          g_nlfyb!,
+          H_nlfyb!,
+          b_cache, 
+          Newton(;alphaguess=InitialStatic(scaled=true), linesearch=BackTracking())
+     )
+
+     b_hat = Optim.minimizer(la_optim)
+     b_cache .= b_hat
+     g = lfyb_urchin(b_hat, θ, urchin)
+
+     # For s = -eps and eps find b maximising s log joint ## at th + log joint at thp along with log|H_s|.
+     ds_H = derivative(laplace_jl, laplace_jl_prep, fd_sys, 0.0, Constant(b_hat), Constant(θ), Constant(θ′), Constant(urchin))
+
+     return -(g - ds_H)
+end
+
+R"""
+Q <- function(th,thp,vol,age,eps=1e-5) {
+     ## 1. find b.hat maximising log joint density at thp
+     if (exists(".inib",envir=environment(Q))) { 
+          b <- get(".inib",envir=environment(Q))
+     } else {
+          b <- NULL
+     }
+     la <- laplace(s=0,th,thp,vol,age,b=b)
+     assign(".inib",la$b,envir=environment(Q))
+     ## 2. For s = -eps and eps find b maximising s log joint ## at th + log joint at thp along with log|H_s|.
+     lap <- laplace(s=eps/2,th,thp,vol,age,b=la$b)$rldetH
+     lam <- laplace(s= -eps/2,th,thp,vol,age,b=la$b)$rldetH
+     la$g - (lap-lam)/eps
+}
+"""
+
+th = th_init
+th_p = th_init + rand(length(th_init))
+const b_cache = deepcopy(b_init)
+
+Q(th, th_p, urchin)
+R"Q($(th), $(th_p), urchin$vol, urchin$age)"
+
+# Q(zeros(6), zeros(6), urchin, b_init)
+# R"Q(rep(0,6), rep(0,6), urchin$vol, urchin$age)"
+
+θ = zero(th_init)
+θ′ = zero(th_init)
+
+for i in 1:30
+     er = optimize(
+         θ -> Q(θ, θ′, urchin),
+         θ,
+         NelderMead(;
+             parameters = Optim.FixedParameters()
+         ),
+         Optim.Options(show_trace=true, iterations=200)
+     )
+     θ = deepcopy(Optim.minimizer(er))
+     θ′ = deepcopy(Optim.minimizer(er))
+     println("iteration: $i, θ: $θ")
+end
+
+R"""
+thp <- th <- rep(0,6); ## starting values
+for (i in 1:30) { ## EM loop
+     er <- optim(th,Q,control=list(fnscale=-1,maxit=200),vol=urchin$vol,age=urchin$age,thp=thp)
+     th <- thp <- er$par
+     cat(th,"\n")
+}
+"""
+@rget th
+
+DataFrame(R=th, Julia=θ)
