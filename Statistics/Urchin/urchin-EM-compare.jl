@@ -25,7 +25,7 @@ select!(urchin, Not(:id))
 urchin.age = convert(Vector{Float64}, urchin.age)
 
 # urchin = urchin[[1,3,5,50,100,142], :]
-urchin = urchin[1:5:nrow(urchin), :]
+urchin = urchin[1:2:nrow(urchin), :]
 
 # index into a single vector for b (random effects)
 log_g_ix = 1:nrow(urchin)
@@ -408,7 +408,7 @@ R"Q($(th), $(th_p), urchin$vol, urchin$age)"
 θ′ = zero(th_init)
 er_min = 0.0
 
-for i in 1:50
+for i in 1:30
      er = optimize(
          θ -> Q(θ, θ′, urchin),
          θ,
@@ -425,7 +425,7 @@ end
 
 R"""
 thp <- th <- rep(0,6); ## starting values
-for (i in 1:50) { ## EM loop
+for (i in 1:30) { ## EM loop
      er <- optim(th,Q,control=list(fnscale=-1,maxit=200),vol=urchin$vol,age=urchin$age,thp=thp)
      th <- thp <- er$par
      cat(th,"\n")
@@ -439,3 +439,10 @@ er_min
 R"er$value"
 R"Q(th, th, urchin$vol, urchin$age)"
 R"Q($(θ), $(θ), urchin$vol, urchin$age)"
+
+R"""
+b_final <- get(".inib",envir=environment(Q))
+"""
+@rget b_final
+
+DataFrame(R=b_final, Julia=b_cache)

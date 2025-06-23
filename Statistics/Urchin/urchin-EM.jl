@@ -21,6 +21,9 @@ urchin = CSV.read("./Urchin/urchin.csv", DataFrame)
 select!(urchin, Not(:id))
 urchin.age = convert(Vector{Float64}, urchin.age)
 
+# subset for speed
+urchin = urchin[1:3:nrow(urchin), :]
+
 # index into a single vector for b (random effects)
 log_g_ix = 1:nrow(urchin)
 log_p_ix = range(start=nrow(urchin)+1, length=nrow(urchin))
@@ -80,7 +83,7 @@ function lfyb_urchin(b, θ, urchin)
      return logll
 end
 
-# we'll need to optimize this with Newton's method, so need grad/Hess
+# we'll need to optimize this with Newton's method to get b_hat, so need grad/Hess wrt b
 function nlfyb_urchin(b, θ, urchin)
     -lfyb_urchin(b, θ, urchin)
 end
@@ -197,6 +200,7 @@ end
 
 # b_cache .= b_init
 const b_cache = deepcopy(b_init)
+er_min = 0.0
 
 for i in 1:30
     er = optimize(
@@ -208,7 +212,11 @@ for i in 1:30
         ),
         Optim.Options(show_trace=true, iterations=100)
     )
+    er_min = Optim.minimum(er)
     θ = deepcopy(Optim.minimizer(er))
     θ′ = deepcopy(Optim.minimizer(er))
     println("iteration: $i, θ: $θ")
 end
+
+θ
+er_min
