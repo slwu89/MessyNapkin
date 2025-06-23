@@ -2,7 +2,7 @@
 title: "Laplace approximation to fit random effects models in Julia"
 author: "Sean L. Wu"
 date: "6/19/2025"
-format: gfm
+format: pdf
 toc: true
 toc-depth: 2
 engine: julia
